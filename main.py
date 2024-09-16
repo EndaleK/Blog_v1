@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from flask import Flask, abort, render_template, redirect, url_for, flash, request
 from flask_bootstrap import Bootstrap5
 from flask_ckeditor import CKEditor
@@ -62,7 +62,7 @@ class BlogPost(db.Model):
     author = relationship("User", back_populates="posts")
     title = db.Column(db.String(250), unique=True, nullable=False)
     subtitle = db.Column(db.String(250), nullable=False)
-    date = db.Column(db.String(250), nullable=False)
+    date = db.Column(db.String(250), nullable=False)  # Change this line
     body = db.Column(db.Text, nullable=False)
     img_url = db.Column(db.String(250), nullable=False)
     # Parent relationship to the comments
@@ -179,6 +179,18 @@ def logout():
 def get_all_posts():
     result = db.session.execute(db.select(BlogPost))
     posts = result.scalars().all()
+    
+    # Convert string dates to datetime objects
+    for post in posts:
+        if isinstance(post.date, str):
+            try:
+                post.date = datetime.strptime(post.date, "%B %d, %Y")
+            except ValueError:
+                # If the date string is in a different format, you might need to adjust the format string
+                post.date = datetime.now()  # Fallback to current date if parsing fails
+        elif not isinstance(post.date, datetime):
+            post.date = datetime.now()  # Fallback to current date if it's neither string nor datetime
+    
     return render_template("index.html", all_posts=posts, current_user=current_user)
 
 
@@ -216,7 +228,7 @@ def add_new_post():
             body=form.body.data,
             img_url=form.img_url.data,
             author=current_user,
-            date=date.today().strftime("%B %d, %Y")
+            date=datetime.now()
         )
         db.session.add(new_post)
         db.session.commit()
@@ -287,6 +299,22 @@ def contact():
 #         connection.starttls()
 #         connection.login(MAIL_ADDRESS, MAIL_APP_PW)
 #         connection.sendmail(MAIL_ADDRESS, MAIL_APP_PW, email_message)
+
+
+@app.route('/migrate_dates')
+@admin_only
+def migrate_dates():
+    posts = BlogPost.query.all()
+    for post in posts:
+        if isinstance(post.date, str):
+            try:
+                post.date = datetime.strptime(post.date, "%B %d, %Y")
+            except ValueError:
+                post.date = datetime.now()
+        elif not isinstance(post.date, datetime):
+            post.date = datetime.now()
+    db.session.commit()
+    return "Date migration completed"
 
 
 if __name__ == "__main__":
